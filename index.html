@@ -28,9 +28,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js" defer></script>
 </head>
 
 <body>
+
+    <div class="scroll-progress" aria-hidden="true"></div>
+    <div class="cursor-glow" aria-hidden="true"></div>
 
     <a href="#main" class="skip-link">Skip to main content</a>
 
@@ -189,6 +193,60 @@
             </div>
         </section>
 
+        <section id="radar" class="section">
+            <div class="container">
+                <h2 class="section-title reveal">On My Radar</h2>
+                <p class="section-text reveal">A live feed of what I'm reading and watching — fetched fresh on every visit.</p>
+
+                <div class="radar-grid">
+                    <article class="radar-card reveal" style="--delay: 0.1s;">
+                        <header class="radar-card-head">
+                            <div class="radar-title-row">
+                                <span class="radar-icon"><i class="fa-brands fa-hacker-news" aria-hidden="true"></i></span>
+                                <h3>Tech Pulse</h3>
+                                <span class="live-badge" title="Live data">
+                                    <span class="live-dot" aria-hidden="true"></span>Live
+                                </span>
+                            </div>
+                            <p class="radar-subtitle">Top stories from Hacker News</p>
+                        </header>
+                        <ol class="news-list" id="news-list" aria-busy="true" aria-live="polite">
+                            <li class="news-skeleton" aria-hidden="true"><div class="skeleton-line skeleton-title"></div><div class="skeleton-line short"></div></li>
+                            <li class="news-skeleton" aria-hidden="true"><div class="skeleton-line skeleton-title"></div><div class="skeleton-line short"></div></li>
+                            <li class="news-skeleton" aria-hidden="true"><div class="skeleton-line skeleton-title"></div><div class="skeleton-line short"></div></li>
+                        </ol>
+                        <a class="radar-footer-link" href="https://news.ycombinator.com/" target="_blank" rel="noopener">
+                            More on Hacker News <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                        </a>
+                    </article>
+
+                    <article class="radar-card reveal" style="--delay: 0.2s;">
+                        <header class="radar-card-head">
+                            <div class="radar-title-row">
+                                <span class="radar-icon"><i class="fa-solid fa-futbol" aria-hidden="true"></i></span>
+                                <h3>EPL Standings</h3>
+                                <span class="live-badge" title="Live data">
+                                    <span class="live-dot" aria-hidden="true"></span>Live
+                                </span>
+                            </div>
+                            <p class="radar-subtitle" id="epl-subtitle">Premier League — current season</p>
+                        </header>
+                        <div class="standings-wrapper" id="standings" aria-busy="true" aria-live="polite">
+                            <div class="standings-skeleton">
+                                <div class="skeleton-line skeleton-title"></div>
+                                <div class="skeleton-line"></div>
+                                <div class="skeleton-line"></div>
+                                <div class="skeleton-line short"></div>
+                            </div>
+                        </div>
+                        <a class="radar-footer-link" href="https://www.premierleague.com/tables" target="_blank" rel="noopener">
+                            Full table on premierleague.com <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                        </a>
+                    </article>
+                </div>
+            </div>
+        </section>
+
         <section id="education" class="section">
             <div class="container">
                 <h2 class="section-title reveal">Education &amp; Certifications</h2>
@@ -285,6 +343,10 @@
         <a href="#projects" class="nav-item" aria-label="Projects">
             <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
             <span class="text">Projects</span>
+        </a>
+        <a href="#radar" class="nav-item" aria-label="On My Radar">
+            <i class="fa-solid fa-satellite-dish" aria-hidden="true"></i>
+            <span class="text">Radar</span>
         </a>
         <a href="#contact" class="nav-item" aria-label="Contact">
             <i class="fa-solid fa-envelope" aria-hidden="true"></i>
@@ -474,6 +536,204 @@
 
         // ---------- Footer Year ----------
         document.getElementById('footer-year').textContent = new Date().getFullYear();
+
+        // ---------- Helpers ----------
+        const escapeHTML = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+
+        const timeAgo = (iso) => {
+            const sec = (Date.now() - new Date(iso).getTime()) / 1000;
+            if (sec < 60) return 'just now';
+            if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+            if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+            return `${Math.floor(sec / 86400)}d ago`;
+        };
+
+        // ---------- Tech Pulse: Hacker News ----------
+        (function () {
+            const list = document.getElementById('news-list');
+            if (!list) return;
+
+            fetch('https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=6')
+                .then(r => r.ok ? r.json() : Promise.reject(r.status))
+                .then(data => {
+                    const items = (data.hits || []).filter(h => h.title);
+                    if (!items.length) {
+                        list.innerHTML = '<li class="radar-empty">No stories right now.</li>';
+                        list.removeAttribute('aria-busy');
+                        return;
+                    }
+                    list.innerHTML = items.map((h, i) => {
+                        const url = h.url || `https://news.ycombinator.com/item?id=${h.objectID}`;
+                        const host = h.url ? new URL(h.url).hostname.replace(/^www\./, '') : 'news.ycombinator.com';
+                        return `
+                            <li class="news-item" style="--i:${i}">
+                                <a href="${escapeHTML(url)}" target="_blank" rel="noopener">
+                                    <span class="news-rank">${String(i + 1).padStart(2, '0')}</span>
+                                    <span class="news-body">
+                                        <span class="news-title">${escapeHTML(h.title)}</span>
+                                        <span class="news-meta">
+                                            <span class="news-host">${escapeHTML(host)}</span>
+                                            <span class="news-stat"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i> ${h.points || 0}</span>
+                                            <span class="news-stat"><i class="fa-regular fa-comment" aria-hidden="true"></i> ${h.num_comments || 0}</span>
+                                            <span class="news-stat news-time">${timeAgo(h.created_at)}</span>
+                                        </span>
+                                    </span>
+                                </a>
+                            </li>`;
+                    }).join('');
+                    list.removeAttribute('aria-busy');
+                })
+                .catch(() => {
+                    list.innerHTML = '<li class="radar-empty">Couldn\'t load stories. <a href="https://news.ycombinator.com/" target="_blank" rel="noopener">Visit Hacker News</a></li>';
+                    list.removeAttribute('aria-busy');
+                });
+        })();
+
+        // ---------- EPL Standings (TheSportsDB) ----------
+        (function () {
+            const wrap = document.getElementById('standings');
+            const subtitle = document.getElementById('epl-subtitle');
+            if (!wrap) return;
+
+            const now = new Date();
+            const seasonStart = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+            const seasons = [
+                `${seasonStart}-${seasonStart + 1}`,
+                `${seasonStart - 1}-${seasonStart}`
+            ];
+
+            const f = (row, ...keys) => {
+                for (const k of keys) {
+                    if (row[k] !== undefined && row[k] !== null && row[k] !== '') return row[k];
+                }
+                return '';
+            };
+
+            const renderTable = (table, season) => {
+                if (subtitle) subtitle.textContent = `Premier League — Season ${season}`;
+                const top = table.slice(0, 10);
+                const rest = table.length - top.length;
+                const rows = top.map(row => {
+                    const rank = parseInt(f(row, 'intRank', 'rank'), 10);
+                    const name = f(row, 'strTeam', 'name');
+                    const badge = f(row, 'strBadge', 'strTeamBadge');
+                    const played = f(row, 'intPlayed', 'played');
+                    const win = f(row, 'intWin', 'win');
+                    const draw = f(row, 'intDraw', 'draw');
+                    const loss = f(row, 'intLoss', 'loss');
+                    const gd = f(row, 'intGoalDifference', 'goalsdifference');
+                    const pts = f(row, 'intPoints', 'total');
+                    const zone = rank <= 4 ? 'cl' : rank === 5 ? 'el' : rank >= table.length - 2 ? 'rel' : '';
+                    return `
+                        <tr class="zone-${zone}">
+                            <td class="rank">${escapeHTML(rank)}</td>
+                            <td class="team">
+                                ${badge ? `<img src="${escapeHTML(badge)}" alt="" class="team-badge" loading="lazy" onerror="this.style.display='none'">` : ''}
+                                <span>${escapeHTML(name)}</span>
+                            </td>
+                            <td>${escapeHTML(played)}</td>
+                            <td class="hide-sm">${escapeHTML(win)}</td>
+                            <td class="hide-sm">${escapeHTML(draw)}</td>
+                            <td class="hide-sm">${escapeHTML(loss)}</td>
+                            <td class="hide-sm gd">${gd > 0 ? '+' : ''}${escapeHTML(gd)}</td>
+                            <td class="pts">${escapeHTML(pts)}</td>
+                        </tr>`;
+                }).join('');
+
+                wrap.innerHTML = `
+                    <table class="standings-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Team</th>
+                                <th title="Played">P</th>
+                                <th class="hide-sm" title="Wins">W</th>
+                                <th class="hide-sm" title="Draws">D</th>
+                                <th class="hide-sm" title="Losses">L</th>
+                                <th class="hide-sm" title="Goal Difference">GD</th>
+                                <th title="Points">Pts</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                    ${rest > 0 ? `<p class="standings-more">+ ${rest} more teams below</p>` : ''}
+                    <div class="standings-legend">
+                        <span><i class="zone-chip zone-cl"></i> Champions League</span>
+                        <span><i class="zone-chip zone-el"></i> Europa</span>
+                        <span><i class="zone-chip zone-rel"></i> Relegation</span>
+                    </div>`;
+                wrap.removeAttribute('aria-busy');
+            };
+
+            const tryFetch = (i = 0) => {
+                if (i >= seasons.length) {
+                    wrap.innerHTML = `<div class="radar-empty">Couldn't load standings. <a href="https://www.premierleague.com/tables" target="_blank" rel="noopener">View on premierleague.com</a></div>`;
+                    wrap.removeAttribute('aria-busy');
+                    return;
+                }
+                const season = seasons[i];
+                fetch(`https://www.thesportsdb.com/api/v1/json/3/lookuptable.php?l=4328&s=${season}`)
+                    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+                    .then(data => {
+                        const table = data.table || data.lookuptable;
+                        if (Array.isArray(table) && table.length) renderTable(table, season);
+                        else tryFetch(i + 1);
+                    })
+                    .catch(() => tryFetch(i + 1));
+            };
+            tryFetch();
+        })();
+
+        // ---------- Scroll Progress Bar ----------
+        (function () {
+            const bar = document.querySelector('.scroll-progress');
+            if (!bar) return;
+            const update = () => {
+                const h = document.documentElement;
+                const max = h.scrollHeight - h.clientHeight;
+                const pct = max > 0 ? (h.scrollTop / max) * 100 : 0;
+                bar.style.transform = `scaleX(${pct / 100})`;
+            };
+            window.addEventListener('scroll', update, { passive: true });
+            update();
+        })();
+
+        // ---------- Cursor Glow (desktop only) ----------
+        (function () {
+            if (window.matchMedia('(hover: none)').matches) return;
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            const glow = document.querySelector('.cursor-glow');
+            if (!glow) return;
+            let tx = 0, ty = 0, x = 0, y = 0;
+            window.addEventListener('mousemove', (e) => { tx = e.clientX; ty = e.clientY; });
+            const tick = () => {
+                x += (tx - x) * 0.15;
+                y += (ty - y) * 0.15;
+                glow.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+                requestAnimationFrame(tick);
+            };
+            tick();
+            glow.style.opacity = '1';
+        })();
+
+        // ---------- Confetti on "Let's Collaborate" ----------
+        (function () {
+            const btn = document.querySelector('a[href="#contact"].btn-secondary');
+            if (!btn) return;
+            btn.addEventListener('click', () => {
+                if (typeof confetti !== 'function') return;
+                const accent = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#0ea5e9';
+                const colors = [accent, '#10B981', '#f59e0b', '#ec4899'];
+                const rect = btn.getBoundingClientRect();
+                const origin = {
+                    x: (rect.left + rect.width / 2) / window.innerWidth,
+                    y: (rect.top + rect.height / 2) / window.innerHeight
+                };
+                confetti({ particleCount: 80, spread: 70, origin, colors, scalar: 0.9, ticks: 200 });
+            });
+        })();
     </script>
 
 </body>
